@@ -98,13 +98,15 @@ class ET_Client extends SoapClient
 	 */
 	function __construct($getWSDL = false, $debug = false, $params = null) 
 	{
-		$tenantTokens = array();
+		$this->tenantTokens = [];
 		$config = false;
 
 		$this->xmlLoc = 'ExactTargetWSDL.xml';
 
-		if (file_exists(realpath("config.php")))
-			$config = include 'config.php';
+		$configPath = realpath('config.php');
+		if ($configPath !== false && file_exists($configPath)) {
+			$config = include $configPath;
+		}
 
 		if ($config)
 		{
@@ -264,7 +266,7 @@ class ET_Client extends SoapClient
 		} else {
             $cache = new ET_CacheService($this->clientId, $this->clientSecret);
             $cacheData = $cache->get();
-            if (!is_null($cacheData) && $cacheData->url) {
+			if (is_object($cacheData) && !empty($cacheData->url)) {
                 $this->endpoint = $cacheData->url;
             } else {
                 try {
@@ -308,6 +310,22 @@ class ET_Client extends SoapClient
 
 		parent::__setLocation($this->endpoint);
 	}
+
+	private function ensureTenantBucket($tenantKey): string
+	{
+		$key = ($tenantKey === null)
+			? (string)($this->tenantKey ?? 'default')
+			: (string)$tenantKey;
+
+		if (!is_array($this->tenantTokens)) {
+			$this->tenantTokens = [];
+		}
+		if (!array_key_exists($key, $this->tenantTokens) || !is_array($this->tenantTokens[$key])) {
+			$this->tenantTokens[$key] = [];
+		}
+		return $key;
+	}
+	
 	/**
 	 * Gets the refresh token using the authentication URL.
 	 *
@@ -345,11 +363,13 @@ class ET_Client extends SoapClient
 					$jsonRequest->refreshToken = $this->getRefreshToken($this->tenantKey);
 				}
 				$authResponse = ET_Util::restPost($url, json_encode($jsonRequest), $this);
-				$authObject = json_decode($authResponse->body);
+				$body = is_object($authResponse) && isset($authResponse->body) ? $authResponse->body : '';
+				$authObject = json_decode($body);
+
 				//echo "auth:  \n";
 				//print_r($authResponse);
 				
-				if ($authResponse && property_exists($authObject,"accessToken")){		
+				if (is_object($authObject) && $authResponse && property_exists($authObject,"accessToken")){		
 					$dv = new DateInterval('PT'.$authObject->expiresIn.'S');
 					$newexpTime = new DateTime();
 					$this->setAuthToken($this->tenantKey, $authObject->accessToken, $newexpTime->add($dv));
@@ -386,10 +406,10 @@ class ET_Client extends SoapClient
             $payload->grant_type = 'client_credentials';
 		}
 
-		if (!empty(trim($this->accountId))){
+		if (trim((string)$this->accountId) !== '') {
             $payload->account_id = $this->accountId;
 		}
-		if (!empty(trim($this->scope))){
+		if (trim((string)$this->scope) !== '') {
             $payload->scope = $this->scope;
 		}
 
@@ -416,9 +436,10 @@ class ET_Client extends SoapClient
                 $jsonRequest = $this->createPayloadForOauth2();
 
                 $authResponse = ET_Util::restPost($url, json_encode($jsonRequest), $this);
-                $authObject = json_decode($authResponse->body);
+                $body = is_object($authResponse) && isset($authResponse->body) ? $authResponse->body : '';
+				$authObject = json_decode($body);
 
-                if ($authResponse && property_exists($authObject,"access_token")){
+				if ($authResponse && is_object($authObject) && property_exists($authObject, "access_token")) {
                     $dv = new DateInterval('PT'.$authObject->expires_in.'S');
                     $newexpTime = new DateTime();
                     $this->setAuthToken($this->tenantKey, $authObject->access_token, $newexpTime->add($dv));
@@ -538,7 +559,8 @@ class ET_Client extends SoapClient
 
 		if ($this->debugSOAP){
 			error_log ('FuelSDK SOAP Request: ');
-			error_log (str_replace($this->getInternalAuthToken($this->tenantKey),"REMOVED",$content));
+			$token = (string)$this->getInternalAuthToken($this->tenantKey);
+			error_log( str_replace($token, "REMOVED", $content));
 		}
 		
 		$headers = array("Content-Type: text/xml","SOAPAction: ".$saction, "User-Agent: ".ET_Util::getSDKVersion());
@@ -577,6 +599,8 @@ class ET_Client extends SoapClient
 	 */
 	public function addOAuth( $doc, $token) 
 	{		
+		$token = (string)$token;
+
 		$soapDoc = $doc;
 		$envelope = $doc->documentElement;
 		$soapNS = $envelope->namespaceURI;
@@ -610,13 +634,8 @@ class ET_Client extends SoapClient
 	*/	
 	public function getAuthToken($tenantKey = null) 
 	{
-		$tenantKey = $tenantKey == null ? $this->tenantKey : $tenantKey;
-		if ($this->tenantTokens[$tenantKey] == null) {
-			$this->tenantTokens[$tenantKey] = array();
-		}		
-		return isset($this->tenantTokens[$tenantKey]['authToken']) 
-			? $this->tenantTokens[$tenantKey]['authToken']
-			: null;
+		$tenantKey = $this->ensureTenantBucket($tenantKey);
+		return $this->tenantTokens[$tenantKey]['authToken'] ?? null;		
 	}
 	
 	/** 
@@ -627,9 +646,7 @@ class ET_Client extends SoapClient
 	*/
 	function setAuthToken($tenantKey, $authToken, $authTokenExpiration) 
 	{
-		if ($this->tenantTokens[$tenantKey] == null) {
-			$this->tenantTokens[$tenantKey] = array();
-		}
+		$tenantKey = $this->ensureTenantBucket($tenantKey);
 		$this->tenantTokens[$tenantKey]['authToken'] = $authToken;
 		$this->tenantTokens[$tenantKey]['authTokenExpiration'] = $authTokenExpiration;
 	}
@@ -641,13 +658,8 @@ class ET_Client extends SoapClient
 	*/
 	function getAuthTokenExpiration($tenantKey) 
 	{
-		$tenantKey = $tenantKey == null ? $this->tenantKey : $tenantKey;
-		if ($this->tenantTokens[$tenantKey] == null) {
-			$this->tenantTokens[$tenantKey] = array();
-		}
-		return isset($this->tenantTokens[$tenantKey]['authTokenExpiration'])
-			? $this->tenantTokens[$tenantKey]['authTokenExpiration']
-			: null;
+		$tenantKey = $this->ensureTenantBucket($tenantKey);
+		return $this->tenantTokens[$tenantKey]['authTokenExpiration'] ?? null;
 	}
 
 	/** 
@@ -657,13 +669,8 @@ class ET_Client extends SoapClient
 	*/
 	function getInternalAuthToken($tenantKey) 
 	{
-		$tenantKey = $tenantKey == null ? $this->tenantKey : $tenantKey;	
-		if ($this->tenantTokens[$tenantKey] == null) {
-			$this->tenantTokens[$tenantKey] = array();
-		}
-		return isset($this->tenantTokens[$tenantKey]['internalAuthToken'])
-			? $this->tenantTokens[$tenantKey]['internalAuthToken']
-			: null;
+		$tenantKey = $this->ensureTenantBucket($tenantKey);
+		return $this->tenantTokens[$tenantKey]['internalAuthToken'] ?? null;
 	}
 
 	/** 
@@ -672,9 +679,7 @@ class ET_Client extends SoapClient
 	* @param string $internalAuthToken
 	*/
 	function setInternalAuthToken($tenantKey, $internalAuthToken) {
-		if ($this->tenantTokens[$tenantKey] == null) {
-			$this->tenantTokens[$tenantKey] = array();
-		}	
+		$tenantKey = $this->ensureTenantBucket($tenantKey);
 		$this->tenantTokens[$tenantKey]['internalAuthToken'] = $internalAuthToken;
 	}
 	
@@ -685,9 +690,7 @@ class ET_Client extends SoapClient
 	*/
 	function setRefreshToken($tenantKey, $refreshToken) 
 	{
-		if ($this->tenantTokens[$tenantKey] == null) {
-			$this->tenantTokens[$tenantKey] = array();
-		}	
+		$tenantKey = $this->ensureTenantBucket($tenantKey);
 		$this->tenantTokens[$tenantKey]['refreshToken'] = $refreshToken;
 	}
 
@@ -699,13 +702,8 @@ class ET_Client extends SoapClient
 	 */
 	public function getRefreshToken($tenantKey)
 	{
-		$tenantKey = $tenantKey == null ? $this->tenantKey : $tenantKey;	
-		if ($this->tenantTokens[$tenantKey] == null) {
-			$this->tenantTokens[$tenantKey] = array();
-		}
-		return isset($this->tenantTokens[$tenantKey]['refreshToken']) 
-			? $this->tenantTokens[$tenantKey]['refreshToken']
-			: null;
+		$tenantKey = $this->ensureTenantBucket($tenantKey);
+		return $this->tenantTokens[$tenantKey]['refreshToken'] ?? null;
 	}	
 
 	/**

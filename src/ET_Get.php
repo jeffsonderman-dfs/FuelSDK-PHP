@@ -61,17 +61,25 @@ class ET_Get extends ET_Constructor
 			$retrieveRequest["Options"] = $options;
 		}
 		
-		if ($filter){
-			if (array_key_exists("LogicalOperator",$filter )){				
-				$cfp = new stdClass();
-				$cfp->LeftOperand = new SoapVar($filter["LeftOperand"], SOAP_ENC_OBJECT, 'SimpleFilterPart', "http://exacttarget.com/wsdl/partnerAPI");
-				$cfp->RightOperand = new SoapVar($filter["RightOperand"], SOAP_ENC_OBJECT, 'SimpleFilterPart', "http://exacttarget.com/wsdl/partnerAPI");				
-				$cfp->LogicalOperator = $filter["LogicalOperator"];
-				$retrieveRequest["Filter"] = new SoapVar($cfp, SOAP_ENC_OBJECT, 'ComplexFilterPart', "http://exacttarget.com/wsdl/partnerAPI");
-				
-			} else {
-				$retrieveRequest["Filter"] = new SoapVar($filter, SOAP_ENC_OBJECT, 'SimpleFilterPart', "http://exacttarget.com/wsdl/partnerAPI");
-			}
+		if (array_key_exists("LogicalOperator", $filter)) {
+
+			$ns = "http://exacttarget.com/wsdl/partnerAPI";
+		
+			$left  = $filter["LeftOperand"];
+			$right = $filter["RightOperand"];
+		
+			$leftType  = (is_array($left)  && array_key_exists("LogicalOperator", $left))  ? "ComplexFilterPart" : "SimpleFilterPart";
+			$rightType = (is_array($right) && array_key_exists("LogicalOperator", $right)) ? "ComplexFilterPart" : "SimpleFilterPart";
+		
+			$cfp = new stdClass();
+			$cfp->LeftOperand  = new SoapVar($left,  SOAP_ENC_OBJECT, $leftType,  $ns);
+			$cfp->RightOperand = new SoapVar($right, SOAP_ENC_OBJECT, $rightType, $ns);
+			$cfp->LogicalOperator = $filter["LogicalOperator"];
+		
+			$retrieveRequest["Filter"] = new SoapVar($cfp, SOAP_ENC_OBJECT, "ComplexFilterPart", $ns);
+		
+		} else {
+			$retrieveRequest["Filter"] = new SoapVar($filter, SOAP_ENC_OBJECT, "SimpleFilterPart", "http://exacttarget.com/wsdl/partnerAPI");
 		}
 		if ($getSinceLastBatch) {
 			$retrieveRequest["RetrieveAllSinceLastBatch"] = true;

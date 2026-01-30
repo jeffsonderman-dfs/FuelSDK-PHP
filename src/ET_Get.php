@@ -61,26 +61,9 @@ class ET_Get extends ET_Constructor
 			$retrieveRequest["Options"] = $options;
 		}
 		
-		if (array_key_exists("LogicalOperator", $filter)) {
-
-			$ns = "http://exacttarget.com/wsdl/partnerAPI";
-		
-			$left  = $filter["LeftOperand"];
-			$right = $filter["RightOperand"];
-		
-			$leftType  = (is_array($left)  && array_key_exists("LogicalOperator", $left))  ? "ComplexFilterPart" : "SimpleFilterPart";
-			$rightType = (is_array($right) && array_key_exists("LogicalOperator", $right)) ? "ComplexFilterPart" : "SimpleFilterPart";
-		
-			$cfp = new stdClass();
-			$cfp->LeftOperand  = new SoapVar($left,  SOAP_ENC_OBJECT, $leftType,  $ns);
-			$cfp->RightOperand = new SoapVar($right, SOAP_ENC_OBJECT, $rightType, $ns);
-			$cfp->LogicalOperator = $filter["LogicalOperator"];
-		
-			$retrieveRequest["Filter"] = new SoapVar($cfp, SOAP_ENC_OBJECT, "ComplexFilterPart", $ns);
-		
-		} else {
-			$retrieveRequest["Filter"] = new SoapVar($filter, SOAP_ENC_OBJECT, "SimpleFilterPart", "http://exacttarget.com/wsdl/partnerAPI");
-		}
+		if ($filter) {
+			$retrieveRequest['Filter'] = $this->buildSoapFilter($filter);
+		}		
 		if ($getSinceLastBatch) {
 			$retrieveRequest["RetrieveAllSinceLastBatch"] = true;
 		}
@@ -118,5 +101,38 @@ class ET_Get extends ET_Constructor
 			$this->request_id = $return->RequestID;
 		}	
 	}
+
+	private function buildSoapFilter(array $f): SoapVar
+	{
+		$ns = "http://exacttarget.com/wsdl/partnerAPI";
+	
+		// ComplexFilterPart
+		if (isset($f['LogicalOperator'])) {
+			$cfp = new stdClass();
+			$cfp->LogicalOperator = $f['LogicalOperator'];
+	
+			// Recursively wrap operands as SoapVar, preserving concrete types
+			$cfp->LeftOperand  = $this->buildSoapFilter($f['LeftOperand']);
+			$cfp->RightOperand = $this->buildSoapFilter($f['RightOperand']);
+	
+			return new SoapVar($cfp, SOAP_ENC_OBJECT, 'ComplexFilterPart', $ns);
+		}
+	
+		// SimpleFilterPart
+		$sfp = new stdClass();
+		$sfp->Property       = $f['Property'];
+		$sfp->SimpleOperator = $f['SimpleOperator'];
+	
+		// SFMC SOAP prefers these as arrays (even for single values)
+		if (array_key_exists('DateValue', $f)) {
+			$sfp->DateValue = is_array($f['DateValue']) ? $f['DateValue'] : [$f['DateValue']];
+		} else {
+			$val = $f['Value'] ?? null;
+			$sfp->Value = is_array($val) ? $val : [(string)$val];
+		}
+	
+		return new SoapVar($sfp, SOAP_ENC_OBJECT, 'SimpleFilterPart', $ns);
+	}
+	
 }
 ?>

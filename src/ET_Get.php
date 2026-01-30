@@ -18,7 +18,7 @@ class ET_Get extends ET_Constructor
 	* @param 	array    	$filter 	Dictionary type array which may hold e.g. array("Property"=>"", "SimpleOperator"=>"","Value"=>"")
 	* @param 	bool		$getSinceLastBatch 	Gets or sets a boolean value indicating whether to get since last batch. true if get since last batch; otherwise, false.
 	*/	
-	function __construct($authStub, $objType, $props, $filter, $getSinceLastBatch = false)
+	function __construct($authStub, $objType, $props, $filter, $getSinceLastBatch = false, $options = null)
 	{
 		$authStub->refreshToken();
 		$rrm = array();
@@ -55,6 +55,12 @@ class ET_Get extends ET_Constructor
 		if ("Account" == $objType) {
 			$retrieveRequest["QueryAllAccounts"] = true;
 		}
+
+		if (is_array($options) && !empty($options)) {
+			// Example: ['BatchSize' => 200]
+			$retrieveRequest["Options"] = $options;
+		}
+		
 		if ($filter){
 			if (array_key_exists("LogicalOperator",$filter )){				
 				$cfp = new stdClass();

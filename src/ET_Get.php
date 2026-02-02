@@ -36,20 +36,19 @@ class ET_Get extends ET_Constructor
 					}
 				}	
 			}
-
-			// FIX case where ET_Info default props are invalid to the request
-			if ($objType === 'EmailSendDefinition') {
-				$bad = [
-					'DeliveryProfile.CusomterKey',
-					'DeliveryProfile.HeaderContentArea.ID',
-					'DeliveryProfile.FooterContentArea.ID',
-					'SendWindowCloses',
-				];
-				$props = array_values(array_filter($props, fn($p) => !in_array($p, $bad, true)));
-			}
-			
 		}
 		
+		// FIX case where ET_Info default props are invalid to the request
+		if ($objType === 'EmailSendDefinition') {
+			$bad = [
+				'DeliveryProfile.CusomterKey',
+				'DeliveryProfile.HeaderContentArea.ID',
+				'DeliveryProfile.FooterContentArea.ID',
+				'SendWindowCloses',
+			];
+			$props = array_values(array_filter($props, fn($p) => !in_array($p, $bad, true)));
+		}
+
 		if (ET_Util::isAssoc($props)){
 			$retrieveProps = array();
 			foreach ($props as $key => $value){	

@@ -543,7 +543,7 @@ class ET_Client extends SoapClient
 	public function __doRequest(
 		string $request,
 		string $location,
-		string $action,
+		string $saction,
 		int $version,
 		bool $oneWay = false
 	): ?string 
